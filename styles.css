@@ -1,0 +1,60 @@
+@charset "UTF-8";
+
+html {
+    font-family: sans-serif;
+    font-size: 12pt;
+}
+
+body {
+    position: absolute;
+    overflow: hidden;
+    top: 0px;
+    right: 0px;
+    bottom: 0px;
+    left: 0px;
+    background-color: #e0e0e0;
+    color: #202020;
+}
+
+@media screen and (prefers-color-scheme: dark) {
+    body {
+        background-color: #202020;
+        color: #e0e0e0;
+    }
+}
+
+body, canvas {
+	margin: 0px;
+	padding: 0px;
+}
+
+canvas {
+	display: block;
+}
+
+#page {
+    display: flex;
+    flex-flow: column nowrap;
+    justify-content: center;
+}
+
+#page > div {
+    display: flex;
+    flex-flow: row nowrap;
+    justify-content: center;
+}
+
+#canvas-row > div {
+    display: flex;
+    flex-flow: column nowrap;
+    justify-content: center;
+}
+
+#canvas-row > div p:not(:first-child) {
+    margin-bottom: 0px;
+}
+
+#canvas-row canvas {
+    border: 1px solid #2c0404;
+    margin-left: -1px;
+}

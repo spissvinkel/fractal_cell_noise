@@ -1,23 +1,23 @@
-/* 
+/*
 --------------------------------------------------------------------------------
 
 octavia noise
 
 --------------------------------------------------------------------------------
 
-this is the heart of the cellular noise algorithm. it's a single x, y lookup. the noise loops on itself, and is a rectangle xsize by ysize. x and y are the current point in space we are calculating for (floating point is fine). the space is divided into squares. n points are deterministically placed             
-+---------+ in the square ("samples" controls this). each is given a random 
-|   x     | height, by default -1 to 1. a soft 0-1 kernel is centered on each. 
-|         | it has a diameter equal to the square size, outside of which it 
-|x     x  | falls off cleanly to 0. 
-|  x      | 
+this is the heart of the cellular noise algorithm. it's a single x, y lookup. the noise loops on itself, and is a rectangle xsize by ysize. x and y are the current point in space we are calculating for (floating point is fine). the space is divided into squares. n points are deterministically placed
++---------+ in the square ("samples" controls this). each is given a random
+|   x     | height, by default -1 to 1. a soft 0-1 kernel is centered on each.
+|         | it has a diameter equal to the square size, outside of which it
+|x     x  | falls off cleanly to 0.
+|  x      |
 +---------+ d is density- at density 1 you have 1 square for the entire texture space. at density 2 it's 2 squares by 2, etc.. seed is the seed for this octave. softness alters the shape of the falloff (but it always has the same diameter). the heights can be customized customized by setting the bias value (center) and range (it goes from bias - range to bias + range)   */
 
 // this variant uses a trick to reduce samples
 // sample radius is 1/2 square edge instead of 1, which makes overlap from neighboring cells never more than 1/2 square length. this means we can check which quadrant we're in and only check the three nearest neighbors, instead of all 8 neighbors.
 function curve_stack_2x2_xy(x, y, xsize = 256, ysize = 256, d = 1, seed = 0, softness = 1, samples = 4, bias = 0, range = 1 ) {
 
-    x /= xsize; y /= xsize 
+    x /= xsize; y /= xsize
     let ix = Math.floor(x * d); let iy = Math.floor(y * d)
     let ti = 0 // random number table index
     let dm1 = d - 1 // for the bitwise & instead of % range trick
@@ -38,15 +38,15 @@ function curve_stack_2x2_xy(x, y, xsize = 256, ysize = 256, d = 1, seed = 0, sof
         cx = left
         while (cx <= right) {
             // this is a deterministic noise function with two integer inputs
-            ti = pos3int((cx + d) & dm1, (cy + d) & dm1, noise_seed)
+            ti = pos3int((cx + d) & dm1, (cy + d) & dm1, seed)
             // seed our rng with that value
-        
+
             // this bounded curve runs from -1 to 1. i believe this means that we want to multiply the distance by d. however, this seems to leave seams? maybe i am wrong about the numbers.
             for (let a = 0; a < samples; a ++) {
                 px = cx / d + noise_table[(ti ++) & nt_sizem1] / nt_size / d
                 py = cy / d + noise_table[(ti ++) & nt_sizem1] / nt_size / d
                 distance_squared = d * d * ((x - px) ** 2 + (y - py) ** 2) * 4
-                
+
                 let h = bias + -range + 2 * range * noise_table[(ti ++) % nt_size] / nt_size
                 // this is a bounded -1 to 1 variant of the witch of agnesi. this will prevent seams when points drop out of the set.
                 if (distance_squared < 1.0) {
@@ -67,7 +67,7 @@ function curve_stack_2x2_xy(x, y, xsize = 256, ysize = 256, d = 1, seed = 0, sof
 
 function curve_stack_3x3_xy(x, y, xsize = 256, ysize = 256, d = 1, seed = 0, softness = 1, samples = 4, bias = 0, range = 1 ) {
 
-    x /= xsize; y /= xsize 
+    x /= xsize; y /= xsize
     let ix = Math.floor(x * d); let iy = Math.floor(y * d)
     let ti = 0 // random number table index
 
@@ -80,18 +80,18 @@ function curve_stack_3x3_xy(x, y, xsize = 256, ysize = 256, d = 1, seed = 0, sof
             // this is a deterministic noise function with two integer inputs
             ti = pos3int((cx + d) % d, (cy + d) % d, noise_seed)
             // seed our rng with that value
-        
+
             // let count = 1 + prime_cycle() % (samples - 1)
             let count = samples
             // this bounded curve runs from -1 to 1. i believe this means that we want to multiply the distance by d. however, this seems to leave seams? maybe i am wrong about the numbers.
             for (let a = 0; a < count; a ++) {
-                let px = cx / d + (noise_table[(ti ++) % nt_size] / nt_size) / d 
+                let px = cx / d + (noise_table[(ti ++) % nt_size] / nt_size) / d
                 let py = cy / d + (noise_table[(ti ++) % nt_size] / nt_size) / d
-                let distance = d * Math.sqrt((x - px) ** 2 + (y - py) ** 2) 
+                let distance = d * Math.sqrt((x - px) ** 2 + (y - py) ** 2)
                 let height = bias + -range + 2 * range * noise_table[(ti ++) % nt_size] / nt_size
                 // this is a bounded -1 to 1 variant of the witch of agnesi. this will prevent seams when points drop out of the set.
                 if (distance < 1.0) {
-                    let a = (softness * (1 - distance * distance) 
+                    let a = (softness * (1 - distance * distance)
                             / (softness + distance * distance))
                     a = a * a
                     // note that this worked ^ 2, but the derivative was not 0 at -1 and 1
@@ -119,6 +119,53 @@ function cell_noise_xy(x, y, xsize = 256, ysize = 256, density = 4, seed = 0,oct
     c_height = 0.5 * surface
     return c_height
 }
+
+let xsize_ = 256, ysize_ = 256, density_ = 4, seed_ = 0, octaves_ = 2, amplitude_ratio_ = 1/2, softness_ = 1, samples_ = 4, bias_ = 0, range_ = 1;
+function cell_noise_xy_modified(x0, y0) {
+    const x = x0 / xsize_, y = y0 / ysize_;
+    const bmr = bias_ - range_, r2 = range_ * 2;
+    let seed = seed_, octave_seed;
+    let d, dm1, di, dd4;
+    let xd, yd, ix, iy, left, top, right, bottom;
+    let ti, distance_squared, sum;
+    let surface = 0;
+    for (let octave = 0; octave < octaves_; octave ++) {
+        octave_seed = noise_table[seed & nt_sizem1];
+        seed += pc_increment;
+        d = density_ * 2 ** octave; dm1 = d - 1; di = 1 / d; dd4 = d * d * 4;
+        xd = x * d; yd = y * d;
+        ix = Math.floor(xd); iy = Math.floor(yd);
+        left = ix - 1 + (Math.floor(xd * 2) & 1); top = iy - 1 + (Math.floor(yd * 2) & 1); right = left + 1; bottom = top + 1;
+        sum = 0;
+        ti = noise_table[((((left + d) & dm1) & nsm1) + (((top + d) & dm1) & nsm1) * ns + octave_seed) & nt_sizem1];
+        for (let a = 0; a < samples_; a ++) {
+            distance_squared = dd4 * ((x - (left + noise_table_f[ti ++]) * di) ** 2 + (y - (top + noise_table_f[ti ++]) * di) ** 2);
+            if (distance_squared < 1.0) sum += (bmr + r2 * noise_table_f[ti]) * (softness_ * (1 - distance_squared) / (softness_ + distance_squared)) ** 2;
+            ti ++;
+        }
+        ti = noise_table[((((right + d) & dm1) & nsm1) + (((top + d) & dm1) & nsm1) * ns + octave_seed) & nt_sizem1];
+        for (let a = 0; a < samples_; a ++) {
+            distance_squared = dd4 * ((x - (right + noise_table_f[ti ++]) * di) ** 2 + (y - (top + noise_table_f[ti ++]) * di) ** 2);
+            if (distance_squared < 1.0) sum += (bmr + r2 * noise_table_f[ti]) * (softness_ * (1 - distance_squared) / (softness_ + distance_squared)) ** 2;
+            ti ++;
+        }
+        ti = noise_table[((((left + d) & dm1) & nsm1) + (((bottom + d) & dm1) & nsm1) * ns + octave_seed) & nt_sizem1];
+        for (let a = 0; a < samples_; a ++) {
+            distance_squared = dd4 * ((x - (left + noise_table_f[ti ++]) * di) ** 2 + (y - (bottom + noise_table_f[ti ++]) * di) ** 2);
+            if (distance_squared < 1.0) sum += (bmr + r2 * noise_table_f[ti]) * (softness_ * (1 - distance_squared) / (softness_ + distance_squared)) ** 2;
+            ti ++;
+        }
+        ti = noise_table[((((right + d) & dm1) & nsm1) + (((bottom + d) & dm1) & nsm1) * ns + octave_seed) & nt_sizem1];
+        for (let a = 0; a < samples_; a ++) {
+            distance_squared = dd4 * ((x - (right + noise_table_f[ti ++]) * di) ** 2 + (y - (bottom + noise_table_f[ti ++]) * di) ** 2);
+            if (distance_squared < 1.0) sum += (bmr + r2 * noise_table_f[ti]) * (softness_ * (1 - distance_squared) / (softness_ + distance_squared)) ** 2;
+            ti ++;
+        }
+        surface += (amplitude_ratio_ ** octave) * sum;
+    }
+    return 0.5 * surface;
+}
+
 /* this evaluates as -1 to 1, very center-weighted
 (seed 29477)
 -1.0 - -0.9  ▓▓
@@ -144,7 +191,7 @@ function cell_noise_xy(x, y, xsize = 256, ysize = 256, density = 4, seed = 0,oct
 */
 
 
-/* 
+/*
 --------------------------------------------------------------------------------
 
 positional random number generation
@@ -172,6 +219,13 @@ var noise_table = []
 var ns = 256
 var nt_size = ns * ns
 var nt_sizem1 = nt_size - 1
+
+const nsm1 = ns - 1;
+const nt_size_inv = 1 / nt_size;
+const max_samples = 16;
+const extra_items = max_samples * 3 - 1;
+const noise_table_f = []
+
 function init_random_table() {
     let list = []
     for (let a = 0; a < nt_size; a ++) {
@@ -179,11 +233,15 @@ function init_random_table() {
     }
     for (let a = 0; a < nt_size; a ++) {
         noise_table[a] = draw_card(list)
+        noise_table_f[a] = noise_table[a] * nt_size_inv;
+    }
+    for (let a = 0; a < extra_items; a ++) {
+        noise_table_f[nt_size + a] = noise_table_f[a];
     }
 }
 
 
-// if you walk through a table, offsetting your index by a prime number which doesn't divide evenly into your table size, you will cycle through all the entries in the array exactly once, in a nonrepeating order. 
+// if you walk through a table, offsetting your index by a prime number which doesn't divide evenly into your table size, you will cycle through all the entries in the array exactly once, in a nonrepeating order.
 // there are three instances of this in the algorithm, all inline, but this self-contained function is here for clarity
 var pc_increment = 101159
 var pc_seed = 0
